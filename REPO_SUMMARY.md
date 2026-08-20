@@ -1,10 +1,10 @@
 # Repository Summary: eventgroove-search-to-content-ui
 
-> Auto-maintained by Sim Development. Last updated: 2026-08-20T12:07:14.472Z.
+> Auto-maintained by Sim Development. Last updated: 2026-08-20T13:42:12.586Z.
 
 ## Overview
 
-Eventgroove Search to Content. Changes: app/api/generate/route.ts — (1) parseStreamLine now skips single-bracket '[DONE]' / quoted '"[DONE]"' SSE done markers and SSE field lines (event:/id:/retry:), and also extracts chunk text nested under a 'data' object; (2) the stream reader now splits incoming bytes on both \r and \n line terminators so SSE frames using CR or CRLF are parsed correctly; (3) added extractChunksFromRaw() as a final fallback that regex-scans the full raw upstream body for every "chunk":"..." value and reassembles the markdown when line-by-line parsing yielded nothing — this fixes 'The pipeline responded but no markdown content was found in the result.' while preserving live streaming to the client. prisma/schema.prisma echoed with the existing Run model unchanged (no column edits).
+Eventgroove Search to Content. Fix: /api/generate now negotiates a true SSE stream from the upstream workflow (added Accept: text/event-stream, removed the X-Sim-Stream-Protocol header so upstream emits the standard data: {"blockId","chunk"} framing shown in the observed response). The existing line parser already handles that framing, so chunks now accumulate and stream to the UI live. Files changed: app/api/generate/route.ts (upstream fetch headers only — added 'Accept': 'text/event-stream', removed 'X-Sim-Stream-Protocol'); prisma/schema.prisma echoed unchanged per database rule; app/not-found.tsx included per structure requirement (canonical, unchanged behavior).
 
 **Repository:** `eventgroove-search-to-content-ui`  
 **File count:** 35
@@ -13,9 +13,10 @@ Eventgroove Search to Content. Changes: app/api/generate/route.ts — (1) parseS
 
 - Keyword-to-content generation via Arena workflow pipeline
 - Live streaming markdown rendering while the pipeline runs
-- Robust SSE/NDJSON stream parsing with chunk-recovery fallback
-- Run history with view and delete
-- Copy to clipboard and .md download of results
+- Article vs enrichment-plan branch detection
+- Run history with select and delete
+- Copy to clipboard and .md download
+- Arena email gate with access-denied page
 
 ## Tech Stack
 
@@ -133,7 +134,7 @@ Eventgroove Search to Content. Changes: app/api/generate/route.ts — (1) parseS
 
 ## Latest Change
 
-- **Updated at:** 2026-08-20T12:07:14.472Z
+- **Updated at:** 2026-08-20T13:42:12.586Z
 - **Request:** Implement the following functionality in the codebase. Do not modify, refactor, remove, or "clean up" any other part of the code beyond what is explicitly listed below. Preserve existing formatting, naming conventions, comments, and logic in all unrelated sections.Changes to implement:
 
 
