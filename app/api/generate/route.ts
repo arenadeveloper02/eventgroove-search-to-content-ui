@@ -156,6 +156,12 @@ export async function POST(request: Request): Promise<Response> {
 
   let upstream: globalThis.Response;
   try {
+    // NOTE: do NOT pass selectedOutputs / includeThinking / includeToolCalls here.
+    // Filtering with selectedOutputs suppressed the streamed
+    // data: {"blockId":"...","chunk":"..."} frames and left the final payload
+    // with an empty output ({}), which caused "no markdown content was found".
+    // Requesting the plain stream lets every chunk frame through so the
+    // existing parser can relay them to the client live.
     upstream = await fetch(UPSTREAM_URL, {
       method: 'POST',
       headers: {
@@ -169,9 +175,6 @@ export async function POST(request: Request): Promise<Response> {
         client,
         site,
         stream: true,
-        selectedOutputs: ['articleenricher.content'],
-        includeThinking: true,
-        includeToolCalls: true,
       }),
       signal: AbortSignal.timeout(300_000),
       cache: 'no-store',

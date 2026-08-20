@@ -1,22 +1,20 @@
 # Repository Summary: eventgroove-search-to-content-ui
 
-> Auto-maintained by Sim Development. Last updated: 2026-08-20T13:42:12.586Z.
+> Auto-maintained by Sim Development. Last updated: 2026-08-20T14:15:57.432Z.
 
 ## Overview
 
-Eventgroove Search to Content. Fix: /api/generate now negotiates a true SSE stream from the upstream workflow (added Accept: text/event-stream, removed the X-Sim-Stream-Protocol header so upstream emits the standard data: {"blockId","chunk"} framing shown in the observed response). The existing line parser already handles that framing, so chunks now accumulate and stream to the UI live. Files changed: app/api/generate/route.ts (upstream fetch headers only — added 'Accept': 'text/event-stream', removed 'X-Sim-Stream-Protocol'); prisma/schema.prisma echoed unchanged per database rule; app/not-found.tsx included per structure requirement (canonical, unchanged behavior).
+Eventgroove Search to Content. Fix: streaming SSE chunks from the pipeline were being suppressed because the upstream request filtered outputs with `selectedOutputs: ['articleenricher.content']` (a key that does not match the streaming block), so the workflow streamed nothing and the final payload contained an empty `output: {}` — producing the 'no markdown content was found' error. Changed files: app/api/generate/route.ts (upstream fetch body only — removed the selectedOutputs / includeThinking / includeToolCalls options so the workflow streams its `data: {"blockId":...,"chunk":...}` frames, which the existing parseStreamLine logic already handles and relays to the client for live rendering). prisma/schema.prisma is returned unchanged (echo of the live Run model — no columns added, edited, or removed).
 
 **Repository:** `eventgroove-search-to-content-ui`  
 **File count:** 35
 
 ## Features
 
-- Keyword-to-content generation via Arena workflow pipeline
-- Live streaming markdown rendering while the pipeline runs
-- Article vs enrichment-plan branch detection
-- Run history with select and delete
-- Copy to clipboard and .md download
-- Arena email gate with access-denied page
+- Streamed SSE chunk frames ({blockId, chunk}) are now received from the pipeline and rendered live in StreamingPanel
+- Final event frame {"event":"final",...} and [DONE] markers handled as before
+- Raw-body chunk recovery and whole-JSON fallbacks preserved unchanged
+- Run history persisted to Postgres via Prisma exactly as before
 
 ## Tech Stack
 
@@ -134,7 +132,7 @@ Eventgroove Search to Content. Fix: /api/generate now negotiates a true SSE stre
 
 ## Latest Change
 
-- **Updated at:** 2026-08-20T13:42:12.586Z
+- **Updated at:** 2026-08-20T14:15:57.432Z
 - **Request:** Implement the following functionality in the codebase. Do not modify, refactor, remove, or "clean up" any other part of the code beyond what is explicitly listed below. Preserve existing formatting, naming conventions, comments, and logic in all unrelated sections.Changes to implement:
 
 
