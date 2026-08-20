@@ -66,6 +66,24 @@ function extractMarkdown(payload: unknown): string {
   return findLongestMarkdown(payload);
 }
 
+// Fallback recovery: scan the entire raw upstream body for every
+// "chunk":"..." JSON string value and reassemble the streamed markdown.
+// This handles SSE framings that line-by-line parsing missed (e.g. unusual
+// line terminators or frames split across reads).
+function extractChunksFromRaw(raw: string): string {
+  const regex = /"chunk"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let out = '';
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(raw)) !== null) {
+    try {
+      out += JSON.parse(`"${match[1]}"`) as string;
+    } catch {
+      // skip malformed chunk escape sequences
+    }
+  }
+  return out;
+}
+
 interface ParsedStreamLine {
   chunk?: string;
   finalPayload?: unknown;
@@ -74,8 +92,21 @@ interface ParsedStreamLine {
 function parseStreamLine(line: string): ParsedStreamLine | null {
   let trimmed = line.trim();
   if (!trimmed) return null;
+  // Skip non-data SSE fields entirely.
+  if (trimmed.startsWith('event:') || trimmed.startsWith('id:') || trimmed.startsWith('retry:')) {
+    return null;
+  }
   if (trimmed.startsWith('data:')) trimmed = trimmed.slice(5).trim();
-  if (!trimmed || trimmed === '[[DONE]]' || trimmed === '"[[DONE]]"') return null;
+  if (!trimmed) return null;
+  // Done markers arrive in several shapes: [DONE], "[DONE]", [[DONE]], "[[DONE]]".
+  if (
+    trimmed === '[DONE]' ||
+    trimmed === '"[DONE]"' ||
+    trimmed === '[[DONE]]' ||
+    trimmed === '"[[DONE]]"'
+  ) {
+    return null;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
@@ -85,6 +116,14 @@ function parseStreamLine(line: string): ParsedStreamLine | null {
   if (parsed !== null && typeof parsed === 'object') {
     const rec = parsed as Record<string, unknown>;
     if (typeof rec.chunk === 'string') return { chunk: rec.chunk };
+    // Some frames nest the chunk under a data object: {"data":{"chunk":"..."}}
+    const nested = rec.data;
+    if (nested !== null && typeof nested === 'object' && !Array.isArray(nested)) {
+      const nestedRec = nested as Record<string, unknown>;
+      if (typeof nestedRec.chunk === 'string' && rec.event !== 'final') {
+        return { chunk: nestedRec.chunk };
+      }
+    }
     if (typeof rec.content === 'string' && rec.content.trim().length > 0) {
       return { finalPayload: rec };
     }
@@ -191,11 +230,12 @@ export async function POST(request: Request): Promise<Response> {
           const text = decoder.decode(value, { stream: true });
           buffer += text;
           rawText += text;
-          let newlineIndex = buffer.indexOf('\n');
+          // SSE frames may be terminated by \n, \r\n, or \r — split on any of them.
+          let newlineIndex = buffer.search(/[\r\n]/);
           while (newlineIndex >= 0) {
             handleLine(buffer.slice(0, newlineIndex));
             buffer = buffer.slice(newlineIndex + 1);
-            newlineIndex = buffer.indexOf('\n');
+            newlineIndex = buffer.search(/[\r\n]/);
           }
         }
         handleLine(buffer);
@@ -205,6 +245,16 @@ export async function POST(request: Request): Promise<Response> {
           if (extracted.trim()) {
             markdown = extracted;
             send({ type: 'chunk', text: extracted });
+          }
+        }
+
+        if (!markdown.trim() && rawText.trim()) {
+          // Recover streamed chunks directly from the raw body when line-by-line
+          // parsing produced nothing (e.g. unexpected framing of the SSE stream).
+          const rawChunks = extractChunksFromRaw(rawText);
+          if (rawChunks.trim()) {
+            markdown = rawChunks;
+            send({ type: 'chunk', text: rawChunks });
           }
         }
 
