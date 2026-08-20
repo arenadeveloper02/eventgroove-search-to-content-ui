@@ -1,21 +1,21 @@
 # Repository Summary: eventgroove-search-to-content-ui
 
-> Auto-maintained by Sim Development. Last updated: 2026-08-20T11:37:46.740Z.
+> Auto-maintained by Sim Development. Last updated: 2026-08-20T11:55:37.156Z.
 
 ## Overview
 
-Eventgroove Search to Content — turn a keyword into an SEO article draft or an enrichment plan via the Arena content pipeline.
+Fixed the 'no markdown content was found' error in app/api/generate/route.ts: (1) extractMarkdown now also checks top-level `content` and `data.content` paths matching the actual upstream response shape; (2) parseStreamLine now treats any JSON line carrying a non-empty `content` string as a final payload; (3) the stream handler now accumulates the full raw upstream response and, if no chunks/final payload yielded markdown, parses the whole body as a single JSON document (covers pretty-printed / non-line-delimited responses) and extracts the markdown from it — findLongestMarkdown also picks up `assistantContent` inside providerTiming.timeSegments as a last resort. Streaming `{blockId, chunk}` lines continue to render live exactly as before. prisma/schema.prisma is echoed with the existing Run model unchanged.
 
 **Repository:** `eventgroove-search-to-content-ui`  
 **File count:** 35
 
 ## Features
 
-- Keyword-to-content generation form (keyword, intent, client, site)
-- Live streaming of pipeline output as it generates
-- Article vs enrichment-plan branch detection
-- Run history persisted to Postgres with delete support
-- Copy to clipboard and download as .md
+- Keyword to SEO article / enrichment plan generation via Arena workflow
+- Live NDJSON streaming render of pipeline output
+- Robust markdown extraction from streamed chunks, final events, and whole-body JSON responses
+- Run history with view and delete
+- Copy to clipboard and .md download
 
 ## Tech Stack
 
@@ -133,12 +133,73 @@ Eventgroove Search to Content — turn a keyword into an SEO article draft or an
 
 ## Latest Change
 
-- **Updated at:** 2026-08-20T11:37:46.740Z
+- **Updated at:** 2026-08-20T11:55:37.156Z
 - **Request:** Implement the following functionality in the codebase. Do not modify, refactor, remove, or "clean up" any other part of the code beyond what is explicitly listed below. Preserve existing formatting, naming conventions, comments, and logic in all unrelated sections.Changes to implement:
-After populating all the mandatory fields in the Form when user click on 'Generate' button, hit this API -
-curl -X POST \ -H "X-API-Key: sk-sim-rUVbZxIl5c-Lmv8l58W0HQfJFY0Z_dBf" \ -H "X-Sim-Stream-Protocol: agent-events-v1" \ -H "Content-Type: application/json" \ -d '{"keyword":"example","intent":"example","client":"example","site":"example","stream":true,"selectedOutputs":["articleenricher.content"],"includeThinking":true,"includeToolCalls":true}' \ https://agent.thearena.ai/api/workflows/e2662cbd-8abd-4d08-bc58-26c23536d57f/execute
+I am facing this issue -
+Run failed
+The pipeline responded but no markdown content was found in the result.
+When clicking on the Generate button the API is getting hit, that I verified. But getting the above error -
 
-Map the input values into the payload.
+Here is the response of the you need to pick the content from this -
+{
+  "content": "# Event Ticket Types: How to Choose, Price, and Set Them Up for a Smoother Sellout\n\nIf you've ever stared at a blank ticket setup screen wondering whether you need three price tiers or eight, you're not alone. Most organizers over-think ticket types when they're new to it, then under-think them once they've done a few events and default to \"just charge one price for everybody.\"e higher price, they'll default to the cheapest option every time.\n- **Vague or missing early-bird deadlines.** \"Early-bird ends soon\" doesn't create urgency. A specific date does.\n- **Ignoring day-of and box office sales.** If you're selling tickets at the door too, make sure your online and in-person sales are tracked together",
+  "model": "claude-sonnet-5",
+  "tokens": {
+    "input": 2,
+    "output": 5005,
+    "total": 105720,
+    "cacheRead": 0,
+    "cacheWrite": 100713
+  },
+  "toolCalls": {
+    "list": [],
+    "count": 0
+  },
+  "providerTiming": {
+    "startTime": "2026-08-20T11:43:45.919Z",
+    "endTime": "2026-08-20T11:44:48.034Z",
+    "duration": 62115,
+    "modelTime": 62115,
+    "toolsTime": 0,
+    "firstResponseTime": 62115,
+    "iterations": 1,
+    "timeSegments": [
+      {
+        "type": "model",
+        "name": "claude-sonnet-5",
+        "startTime": 1787226225919,
+        "endTime": 1787226288034,
+        "duration": 62115,
+        "assistantContent": "# Event self is usually the fast part once the planning is done.\n\n## Frequently Asked Questions\n\n### How many ticket types should a small event have?\nMost small events do best with 2–4 ticket types: a general admission price, an early-bird discount, and maybe one premium or group option. More than that tends to slow down checkout without adding meaningful revenue.\n\n### What's the difference between a bundle and a ticket add-on?\nA bundle combines admission with another item (like merchandise or a raffle entry) into one purchase at one price. An add-on is typically optional and selected at checkout, such as a donation prompt, and doesn't change the base ticket price.\n\n### Should I charge for virtual tickets if the event is mainly in-person?\nYes, if you're offering real value like a livestream, and it's common to price virtual access lower than in-person admission since it doesn't include a physical seat or amenities. ",
+        "finishReason": "end_turn",
+        "tokens": {
+          "input": 2,
+          "output": 5005,
+          "total": 105720,
+          "cacheRead": 0,
+          "cacheWrite": 100713
+        },
+        "cost": {
+          "input": 0.402856,
+          "output": 0.05005,
+          "total": 0.452906
+        },
+        "provider": "anthropic"
+      }
+    ]
+  },
+  "cost": {
+    "input": 0.402856,
+    "output": 0.05005,
+    "total": 0.452906,
+    "pricing": {
+      "input": 2,
+      "cachedInput": 0.2,
+      "output": 10,
+      "updatedAt": "2026-06-30"
+    }
+  }
+}
 
 Here is a sample streaming response -
 "
@@ -163,3 +224,12 @@ Here is a sample streaming response -
     "blockId": "0b2e41c4-15db-49e2-96f4-0d9aaebf4beb",
     "chunk": " Getting Started with Event"
 }
+We will get the streaming response from the API, so you need to render the streaming response.
+
+Constraints:
+
+Only touch the files/functions directly related to the points above.
+Do not change variable names, code style, or structure outside the scope of these changes.
+Do not add extra features, optimizations, or refactors that weren't requested.
+If a change requires touching a shared/common file, make the minimal edit needed and leave everything else untouched.
+After implementing, list exactly which files and lines were changed, and why.

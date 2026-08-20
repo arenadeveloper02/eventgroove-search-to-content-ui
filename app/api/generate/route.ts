@@ -49,6 +49,8 @@ function findLongestMarkdown(value: unknown, seen: Set<object> = new Set()): str
 
 function extractMarkdown(payload: unknown): string {
   const paths: string[][] = [
+    ['content'],
+    ['data', 'content'],
     ['output', 'content'],
     ['output', 'articleWriter', 'content'],
     ['output', 'articleEnricher', 'content'],
@@ -83,6 +85,9 @@ function parseStreamLine(line: string): ParsedStreamLine | null {
   if (parsed !== null && typeof parsed === 'object') {
     const rec = parsed as Record<string, unknown>;
     if (typeof rec.chunk === 'string') return { chunk: rec.chunk };
+    if (typeof rec.content === 'string' && rec.content.trim().length > 0) {
+      return { finalPayload: rec };
+    }
     if (rec.event === 'final') return { finalPayload: rec.data ?? rec };
   }
   return null;
@@ -163,6 +168,7 @@ export async function POST(request: Request): Promise<Response> {
 
       let markdown = '';
       let finalPayload: unknown = undefined;
+      let rawText = '';
 
       const handleLine = (line: string) => {
         const parsed = parseStreamLine(line);
@@ -182,7 +188,9 @@ export async function POST(request: Request): Promise<Response> {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          const text = decoder.decode(value, { stream: true });
+          buffer += text;
+          rawText += text;
           let newlineIndex = buffer.indexOf('\n');
           while (newlineIndex >= 0) {
             handleLine(buffer.slice(0, newlineIndex));
@@ -197,6 +205,22 @@ export async function POST(request: Request): Promise<Response> {
           if (extracted.trim()) {
             markdown = extracted;
             send({ type: 'chunk', text: extracted });
+          }
+        }
+
+        if (!markdown.trim() && rawText.trim()) {
+          // The upstream may return a single (possibly pretty-printed) JSON document
+          // instead of newline-delimited stream events. Parse the whole body and
+          // extract the markdown content from it.
+          try {
+            const wholePayload: unknown = JSON.parse(rawText.trim());
+            const extracted = extractMarkdown(wholePayload);
+            if (extracted.trim()) {
+              markdown = extracted;
+              send({ type: 'chunk', text: extracted });
+            }
+          } catch {
+            // rawText was not a single JSON document; nothing more to extract
           }
         }
 
