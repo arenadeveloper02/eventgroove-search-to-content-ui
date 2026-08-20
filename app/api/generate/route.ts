@@ -62,7 +62,31 @@ function extractMarkdown(payload: unknown): string {
   return findLongestMarkdown(payload);
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+interface ParsedStreamLine {
+  chunk?: string;
+  finalPayload?: unknown;
+}
+
+function parseStreamLine(line: string): ParsedStreamLine | null {
+  let trimmed = line.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('data:')) trimmed = trimmed.slice(5).trim();
+  if (!trimmed || trimmed === '[[DONE]]' || trimmed === '"[[DONE]]"') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed !== null && typeof parsed === 'object') {
+    const rec = parsed as Record<string, unknown>;
+    if (typeof rec.chunk === 'string') return { chunk: rec.chunk };
+    if (rec.event === 'final') return { finalPayload: rec.data ?? rec };
+  }
+  return null;
+}
+
+export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {
     body = await request.json();
@@ -88,27 +112,28 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  let upstreamJson: unknown;
+  let upstream: globalThis.Response;
   try {
-    const upstream = await fetch(UPSTREAM_URL, {
+    upstream = await fetch(UPSTREAM_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': apiKey,
+        'X-Sim-Stream-Protocol': 'agent-events-v1',
       },
-      body: JSON.stringify({ keyword, intent, client, site }),
+      body: JSON.stringify({
+        keyword,
+        intent,
+        client,
+        site,
+        stream: true,
+        selectedOutputs: ['articleenricher.content'],
+        includeThinking: true,
+        includeToolCalls: true,
+      }),
       signal: AbortSignal.timeout(300_000),
       cache: 'no-store',
     });
-
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: `The content pipeline returned an error (status ${upstream.status}). Please try again.` },
-        { status: 502 }
-      );
-    }
-
-    upstreamJson = await upstream.json();
   } catch (err) {
     const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
     return NextResponse.json(
@@ -121,33 +146,112 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const markdown = extractMarkdown(upstreamJson);
-  if (!markdown || markdown.trim().length === 0) {
+  const upstreamBody = upstream.body;
+  if (!upstream.ok || !upstreamBody) {
     return NextResponse.json(
-      { error: 'The pipeline responded but no markdown content was found in the result.' },
+      { error: `The content pipeline returned an error (status ${upstream.status}). Please try again.` },
       { status: 502 }
     );
   }
 
-  const branch: Branch = markdown.trim().toLowerCase().startsWith('# enrichment plan')
-    ? 'enrichment'
-    : 'article';
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
-  try {
-    const run = await prisma.run.create({
-      data: { keyword, intent, client, site, branch, markdown },
-    });
-    return NextResponse.json({
-      id: run.id,
-      markdown,
-      branch,
-      keyword,
-      createdAt: run.createdAt.toISOString(),
-    });
-  } catch {
-    return NextResponse.json(
-      { error: 'The run succeeded but could not be saved to the database.' },
-      { status: 500 }
-    );
-  }
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+
+      let markdown = '';
+      let finalPayload: unknown = undefined;
+
+      const handleLine = (line: string) => {
+        const parsed = parseStreamLine(line);
+        if (!parsed) return;
+        if (typeof parsed.chunk === 'string') {
+          markdown += parsed.chunk;
+          send({ type: 'chunk', text: parsed.chunk });
+        }
+        if (parsed.finalPayload !== undefined) {
+          finalPayload = parsed.finalPayload;
+        }
+      };
+
+      const reader = upstreamBody.getReader();
+      try {
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex >= 0) {
+            handleLine(buffer.slice(0, newlineIndex));
+            buffer = buffer.slice(newlineIndex + 1);
+            newlineIndex = buffer.indexOf('\n');
+          }
+        }
+        handleLine(buffer);
+
+        if (!markdown.trim() && finalPayload !== undefined) {
+          const extracted = extractMarkdown(finalPayload);
+          if (extracted.trim()) {
+            markdown = extracted;
+            send({ type: 'chunk', text: extracted });
+          }
+        }
+
+        if (!markdown.trim()) {
+          send({
+            type: 'error',
+            error: 'The pipeline responded but no markdown content was found in the result.',
+          });
+          return;
+        }
+
+        const branch: Branch = markdown.trim().toLowerCase().startsWith('# enrichment plan')
+          ? 'enrichment'
+          : 'article';
+
+        try {
+          const run = await prisma.run.create({
+            data: { keyword, intent, client, site, branch, markdown },
+          });
+          send({
+            type: 'done',
+            run: {
+              id: run.id,
+              keyword,
+              branch,
+              markdown,
+              createdAt: run.createdAt.toISOString(),
+            },
+          });
+        } catch {
+          send({
+            type: 'error',
+            error: 'The run succeeded but could not be saved to the database.',
+          });
+        }
+      } catch (err) {
+        const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+        send({
+          type: 'error',
+          error: isTimeout
+            ? 'The pipeline run timed out after 5 minutes. Please try again.'
+            : 'The stream from the content pipeline was interrupted. Please try again.',
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+    },
+  });
 }

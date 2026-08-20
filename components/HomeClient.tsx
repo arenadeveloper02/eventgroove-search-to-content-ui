@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { AlertTriangle, FileText } from 'lucide-react';
-import type { RunResult, GenerateInput, ApiError } from '@/lib/types';
+import type { RunResult, GenerateInput, ApiError, StreamEvent } from '@/lib/types';
 import GenerateForm from '@/components/GenerateForm';
 import LoadingCard from '@/components/LoadingCard';
+import StreamingPanel from '@/components/StreamingPanel';
 import ResultPanel from '@/components/ResultPanel';
 import HistorySidebar from '@/components/HistorySidebar';
 
@@ -18,12 +19,14 @@ export default function HomeClient({ initialRuns }: HomeClientProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastInput, setLastInput] = useState<GenerateInput | null>(null);
+  const [streamingText, setStreamingText] = useState('');
 
   const handleGenerate = async (input: GenerateInput) => {
     setLoading(true);
     setError(null);
     setActiveRun(null);
     setLastInput(input);
+    setStreamingText('');
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -41,13 +44,60 @@ export default function HomeClient({ initialRuns }: HomeClientProps) {
         setError(message);
         return;
       }
-      const run = (await res.json()) as RunResult;
-      setActiveRun(run);
-      setRuns((prev) => [run, ...prev].slice(0, 50));
+      if (!res.body) {
+        setError('The server did not return a response stream. Please try again.');
+        return;
+      }
+
+      let finished = false;
+
+      const handleLine = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        let event: StreamEvent;
+        try {
+          event = JSON.parse(trimmed) as StreamEvent;
+        } catch {
+          return;
+        }
+        if (event.type === 'chunk') {
+          const text = event.text;
+          setStreamingText((prev) => prev + text);
+        } else if (event.type === 'done') {
+          const run = event.run;
+          setActiveRun(run);
+          setRuns((prev) => [run, ...prev].slice(0, 50));
+          finished = true;
+        } else if (event.type === 'error') {
+          setError(event.error);
+          finished = true;
+        }
+      };
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex >= 0) {
+          handleLine(buffer.slice(0, newlineIndex));
+          buffer = buffer.slice(newlineIndex + 1);
+          newlineIndex = buffer.indexOf('\n');
+        }
+      }
+      handleLine(buffer);
+
+      if (!finished) {
+        setError('The stream ended unexpectedly before the run completed. Please try again.');
+      }
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
     } finally {
       setLoading(false);
+      setStreamingText('');
     }
   };
 
@@ -86,7 +136,7 @@ export default function HomeClient({ initialRuns }: HomeClientProps) {
         <div className="min-w-0 space-y-6">
           <GenerateForm disabled={loading} onGenerate={handleGenerate} />
 
-          {loading && <LoadingCard />}
+          {loading && (streamingText ? <StreamingPanel text={streamingText} /> : <LoadingCard />)}
 
           {!loading && error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm">

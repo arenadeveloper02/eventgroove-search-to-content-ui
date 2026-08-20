@@ -1,23 +1,21 @@
-# Repository Summary: Eventgroove Search to Content
+# Repository Summary: eventgroove-search-to-content-ui
 
-> Auto-maintained by Sim Development. Last updated: 2026-08-20T10:25:12.013Z.
+> Auto-maintained by Sim Development. Last updated: 2026-08-20T11:33:10.746Z.
 
 ## Overview
 
-Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SEO article draft or an enrichment plan via an existing AI pipeline, with beautiful markdown rendering, run history, copy/download, and a secure server-side proxy to the pipeline API.
+Eventgroove Search to Content — turn a keyword into an SEO article draft or an enrichment plan with live streaming output from the Arena workflow pipeline.
 
 **Repository:** `eventgroove-search-to-content-ui`  
-**File count:** 29
+**File count:** 35
 
 ## Features
 
-- Keyword form with prefilled intent, client, and site fields
-- Server-side proxy API route that keeps SIM_API_KEY secret with 300s timeout
-- Defensive markdown extraction from the pipeline response with branch detection
-- Rendered markdown via react-markdown + remark-gfm + rehype-raw with Tailwind typography
-- Copy to clipboard and Download .md with slugified filename
-- Run history persisted in Neon Postgres via Prisma with delete support
-- Loading state with elapsed-seconds counter, error and empty states
+- Keyword-to-content generation form
+- Live streaming of pipeline output as it is generated
+- Markdown rendering of article drafts and enrichment plans
+- Run history with select and delete
+- Copy to clipboard and download as .md
 
 ## Tech Stack
 
@@ -29,12 +27,12 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 
 ## Infrastructure
 
-- **Neon project ID:** `aged-snow-04932374` — managed by Sim Development; do not delete or replace
 - **DATABASE_URL:** set on Vercel when Neon is connected — do not commit real credentials
 
 ## Routes & Pages
 
 - `/` — `app/page.tsx`
+- `/access-denied` — `app/access-denied/page.tsx`
 
 ## Database Models
 
@@ -44,6 +42,8 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 
 ### App pages
 
+- `app/access-denied/page.tsx`
+- `app/arena-ds-tokens.css`
 - `app/error.tsx`
 - `app/globals.css`
 - `app/layout.tsx`
@@ -65,10 +65,14 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 - `components/LoadingCard.tsx`
 - `components/MarkdownRenderer.tsx`
 - `components/ResultPanel.tsx`
+- `components/StreamingPanel.tsx`
+- `components/arena-email-provider.tsx`
 
 ### Libraries
 
 - `lib/actions.ts`
+- `lib/arena-email-constants.ts`
+- `lib/arena-email.ts`
 - `lib/prisma.ts`
 - `lib/types.ts`
 - `prisma/schema.prisma`
@@ -76,7 +80,7 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 ### Config
 
 - `.env.example`
-- `.gitignore`
+- `middleware.ts`
 - `next-env.d.ts`
 - `next.config.ts`
 - `package.json`
@@ -92,12 +96,13 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 ## Complete File Index
 
 - `.env.example`
-- `.gitignore`
 - `README.md`
 - `REPO_SUMMARY.md`
+- `app/access-denied/page.tsx`
 - `app/api/generate/route.ts`
 - `app/api/history/[id]/route.ts`
 - `app/api/history/route.ts`
+- `app/arena-ds-tokens.css`
 - `app/error.tsx`
 - `app/globals.css`
 - `app/layout.tsx`
@@ -110,9 +115,14 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 - `components/LoadingCard.tsx`
 - `components/MarkdownRenderer.tsx`
 - `components/ResultPanel.tsx`
+- `components/StreamingPanel.tsx`
+- `components/arena-email-provider.tsx`
 - `lib/actions.ts`
+- `lib/arena-email-constants.ts`
+- `lib/arena-email.ts`
 - `lib/prisma.ts`
 - `lib/types.ts`
+- `middleware.ts`
 - `next-env.d.ts`
 - `next.config.ts`
 - `package.json`
@@ -123,46 +133,33 @@ Internal SEO content tool UI for Eventgroove: turn a seed keyword into a full SE
 
 ## Latest Change
 
-- **Updated at:** 2026-08-20T10:25:12.013Z
-- **Request:** Build a Next.js App Router app called "Eventgroove Search to Content" — an internal SEO content tool UI for Eventgroove.
+- **Updated at:** 2026-08-20T11:33:10.746Z
+- **Request:** Implement the following functionality in the codebase. Do not modify, refactor, remove, or "clean up" any other part of the code beyond what is explicitly listed below. Preserve existing formatting, naming conventions, comments, and logic in all unrelated sections.Changes to implement:
+After populating all the mandatory fields in the Form when user click on 'Generate' button, hit this API -
+curl -X POST \ -H "X-API-Key: sk-sim-rUVbZxIl5c-Lmv8l58W0HQfJFY0Z_dBf" \ -H "X-Sim-Stream-Protocol: agent-events-v1" \ -H "Content-Type: application/json" \ -d '{"keyword":"example","intent":"example","client":"example","site":"example","stream":true,"selectedOutputs":["articleenricher.content"],"includeThinking":true,"includeToolCalls":true}' \ https://agent.thearena.ai/api/workflows/e2662cbd-8abd-4d08-bc58-26c23536d57f/execute
 
-PURPOSE
-It is a front-end for an existing AI pipeline that takes a seed keyword and returns EITHER a full SEO article draft (markdown) OR an enrichment plan for an existing article (markdown).
+Map the input values into the payload.
 
-PAGES / UI
-1. Single main page (/) with a clean, centered layout:
-   - Header: "Eventgroove Search to Content" with a short subtitle: "Turn a keyword into an SEO article draft or an enrichment plan."
-   - A form card with four fields:
-     * keyword — text input, required, empty by default, placeholder "e.g. school fundraising ideas", autofocus.
-     * intent — text input, prefilled with "Informational", editable.
-     * client — text input, prefilled with "Eventgroove", editable.
-     * site — text input, prefilled with "https://products.eventgroove.com/", editable.
-   - A primary "Generate" submit button, disabled while a run is in flight and when keyword is empty.
-2. Loading state: while the run is in flight show an animated skeleton/spinner card with the message "Researching keywords, checking existing Eventgroove content, and generating your draft… this usually takes 1-3 minutes." plus an elapsed-seconds counter. Do not block the whole page; keep the form visible but disabled.
-3. Result panel: when the run returns, render the returned markdown beautifully using react-markdown with remark-gfm and Tailwind typography (prose) styling. Support headings, nested lists, bold, links, and raw HTML tables (use rehype-raw so the <table> markup the pipeline emits renders correctly, styled with borders and padding).
-   - Above the rendered markdown show a small result header with the keyword, the run timestamp, and a badge showing the branch: "New Article Draft" (green) or "Enrichment Plan" (blue).
-   - Two buttons: "Copy to clipboard" (copies the raw markdown, shows a transient "Copied!" confirmation) and "Download .md" (downloads the markdown as <slugified-keyword>.md).
-4. History sidebar / section: a list of past runs, newest first, showing keyword, relative timestamp, and branch badge. Clicking a history item loads that run's markdown into the result panel. Include a small delete (trash) button per item. Show an empty state when there is no history yet.
-5. Error state: if the run fails or times out, show a red error card with the message and a "Try again" button. Never show a raw stack trace.
-
-BACKEND / API
-- Create a server-side Next.js API route POST /api/generate that acts as a proxy. It must:
-  * Read the request body { keyword, intent, client, site }.
-  * POST to https://agent.thearena.ai/api/workflows/e2662cbd-8abd-4d08-bc58-26c23536d57f/execute with headers { "Content-Type": "application/json", "X-API-Key": process.env.SIM_API_KEY } and body { "keyword": ..., "intent": ..., "client": ..., "site": ... }.
-  * NEVER expose SIM_API_KEY to the client. It is a server-only env var. Do not prefix it with NEXT_PUBLIC_. If SIM_API_KEY is missing, return a clear 500 JSON error "SIM_API_KEY is not configured on the server".
-  * Set a long timeout (at least 300 seconds) and configure the route with `export const maxDuration = 300;` and `export const dynamic = 'force-dynamic';` because the pipeline is slow.
-  * The upstream response is a JSON object whose output contains the pipeline result. Extract the markdown defensively: walk the response looking for the first non-empty string on any of these paths in order — output.content, output.articleWriter.content, output.articleEnricher.content, output.result.content, data.output.content — and fall back to a deep search for the longest string value that looks like markdown (starts with '#' or contains '\n## '). Determine the branch: if the markdown starts with "# Enrichment Plan" (case-insensitive) treat branch as "enrichment", otherwise "article".
-  * Persist the run to the database, then return { markdown, branch, keyword, createdAt, id } to the client.
-- Create GET /api/history (returns the 50 most recent runs, newest first) and DELETE /api/history/[id].
-
-DATABASE (Neon Postgres + Prisma)
-- One Prisma model `Run` with: id (cuid, primary key), keyword (String), intent (String), client (String), site (String), branch (String), markdown (String @db.Text), createdAt (DateTime @default(now())), updatedAt (DateTime @updatedAt). Do NOT omit updatedAt.
-- Use a singleton Prisma client in lib/prisma.ts.
-
-STYLING
-- Tailwind CSS with @tailwindcss/typography. Clean, modern, professional SaaS look appropriate for Eventgroove (event ticketing and fundraising): white/very-light-gray background, generous whitespace, rounded-xl cards with subtle shadow and thin borders, a confident teal/green primary accent (#0F9D8C-ish) with a deeper navy for headings, and Inter or system font stack. Fully responsive — history collapses below the main panel on mobile. Include a small footer noting "Internal tool — Eventgroove SEO content pipeline".
-
-QUALITY
-- TypeScript throughout, no `any` in exported signatures.
-- Proper loading/error/empty states everywhere; no placeholder or lorem-ipsum copy.
-- Make sure the app builds cleanly with `next build`.
+Here is a sample streaming response -
+"
+[[DONE]]
+"
+16:52:20
+{"event":"final","data":{"success":true,"output":{},"executionId":"f4a497d1-7603-4f2b-878b-a6a2afd7718a"}}
+16:52:20
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":"ly to fundraising ticketing, school event ticketing, or church event registration, despite these being core Eventgroove audiences and secondary keyword targets.\n- **Print"}
+16:51:50
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":"Event Check-In and Logistics (new)\n - H3: Mobile Check-In From Any Browser\n - H3: Scanner Loans and Offline Sync\n- H2: Frequently Asked Questions (new)"}
+16:52:17
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":"ove"}
+16:51:43
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":"ing\n\n**Target"}
+16:51:43
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":" Ticket"}
+16:51:42
+{"blockId":"0b2e41c4-15db-49e2-96f4-0d9aaebf4beb","chunk":" Getting Started with Event"}
+16:51:42
+{
+    "blockId": "0b2e41c4-15db-49e2-96f4-0d9aaebf4beb",
+    "chunk": " Getting Started with Event"
+}

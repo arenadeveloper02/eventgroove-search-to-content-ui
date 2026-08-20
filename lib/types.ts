@@ -18,3 +18,8 @@ export interface RunResult {
 export interface ApiError {
   error: string;
 }
+
+export type StreamEvent =
+  | { type: 'chunk'; text: string }
+  | { type: 'done'; run: RunResult }
+  | { type: 'error'; error: string };

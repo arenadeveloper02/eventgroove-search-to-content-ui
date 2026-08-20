@@ -15,7 +15,7 @@ model Run {
   client    String
   site      String
   branch    String
-  markdown  String   @db.Text
+  markdown  String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt @default(now())
 }
