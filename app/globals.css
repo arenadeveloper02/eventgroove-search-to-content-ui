@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50;
+}
+
+/* Tables emitted as raw HTML by the pipeline */
+.prose table {
+  @apply w-full border-collapse text-sm;
+}
+
+.prose th,
+.prose td {
+  @apply border border-gray-200 px-3 py-2 text-left align-top;
+}
+
+.prose thead th {
+  @apply bg-gray-50 font-semibold text-navy;
+}
+
+.prose tbody tr:nth-child(even) {
+  @apply bg-gray-50/50;
+}

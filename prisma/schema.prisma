@@ -1,0 +1,21 @@
+// **NOTE: dont remove updatedAt in any tables **
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Run {
+  id        String   @id @default(cuid())
+  keyword   String
+  intent    String
+  client    String
+  site      String
+  branch    String
+  markdown  String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
