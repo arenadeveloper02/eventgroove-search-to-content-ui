@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 const UPSTREAM_URL =
   'https://agent.thearena.ai/api/workflows/e2662cbd-8abd-4d08-bc58-26c23536d57f/execute';
 
+const FALLBACK_API_KEY = 'sk-sim-rUVbZxIl5c-Lmv8l58W0HQfJFY0Z_dBf';
+
 function isMarkdownLike(s: string): boolean {
   const trimmed = s.trim();
   return trimmed.startsWith('#') || trimmed.includes('\n## ');
@@ -104,13 +106,9 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'A keyword is required.' }, { status: 400 });
   }
 
-  const apiKey = process.env.SIM_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'SIM_API_KEY is not configured on the server' },
-      { status: 500 }
-    );
-  }
+  const apiKey = process.env.SIM_API_KEY && process.env.SIM_API_KEY.trim()
+    ? process.env.SIM_API_KEY.trim()
+    : FALLBACK_API_KEY;
 
   let upstream: globalThis.Response;
   try {

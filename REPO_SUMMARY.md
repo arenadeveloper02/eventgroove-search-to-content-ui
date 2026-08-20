@@ -1,20 +1,20 @@
 # Repository Summary: eventgroove-search-to-content-ui
 
-> Auto-maintained by Sim Development. Last updated: 2026-08-20T11:33:10.746Z.
+> Auto-maintained by Sim Development. Last updated: 2026-08-20T11:37:46.740Z.
 
 ## Overview
 
-Eventgroove Search to Content — turn a keyword into an SEO article draft or an enrichment plan with live streaming output from the Arena workflow pipeline.
+Eventgroove Search to Content — turn a keyword into an SEO article draft or an enrichment plan via the Arena content pipeline.
 
 **Repository:** `eventgroove-search-to-content-ui`  
 **File count:** 35
 
 ## Features
 
-- Keyword-to-content generation form
-- Live streaming of pipeline output as it is generated
-- Markdown rendering of article drafts and enrichment plans
-- Run history with select and delete
+- Keyword-to-content generation form (keyword, intent, client, site)
+- Live streaming of pipeline output as it generates
+- Article vs enrichment-plan branch detection
+- Run history persisted to Postgres with delete support
 - Copy to clipboard and download as .md
 
 ## Tech Stack
@@ -133,7 +133,7 @@ Eventgroove Search to Content — turn a keyword into an SEO article draft or an
 
 ## Latest Change
 
-- **Updated at:** 2026-08-20T11:33:10.746Z
+- **Updated at:** 2026-08-20T11:37:46.740Z
 - **Request:** Implement the following functionality in the codebase. Do not modify, refactor, remove, or "clean up" any other part of the code beyond what is explicitly listed below. Preserve existing formatting, naming conventions, comments, and logic in all unrelated sections.Changes to implement:
 After populating all the mandatory fields in the Form when user click on 'Generate' button, hit this API -
 curl -X POST \ -H "X-API-Key: sk-sim-rUVbZxIl5c-Lmv8l58W0HQfJFY0Z_dBf" \ -H "X-Sim-Stream-Protocol: agent-events-v1" \ -H "Content-Type: application/json" \ -d '{"keyword":"example","intent":"example","client":"example","site":"example","stream":true,"selectedOutputs":["articleenricher.content"],"includeThinking":true,"includeToolCalls":true}' \ https://agent.thearena.ai/api/workflows/e2662cbd-8abd-4d08-bc58-26c23536d57f/execute
